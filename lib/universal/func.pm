@@ -26,7 +26,7 @@ sub AUTOLOAD {
     Carp::croak("Undefined subroutine &\$target_class\::\$method");
   }
 
-  \$subref->(\@_);
+  goto &\$subref;
 }
 EVAL
     die $@ if $@;
