@@ -22,7 +22,7 @@ sub UNIVERSAL::dynamic_use {
       package $dynamic_user;
       use strict;
       use warnings;
-      
+
       sub AUTOLOAD {
         my \$class = shift;
         my (\$method) = our \$AUTOLOAD =~ m{^.*:(.+)};
@@ -36,7 +36,7 @@ INNER_EVAL
         die \$@ if \$@;
         return \$module;
       }
-      
+
       1;
 
 EVAL
