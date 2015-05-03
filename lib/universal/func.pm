@@ -3,6 +3,7 @@ use strict;
 use warnings;
 
 use Carp ();
+use File::Spec ();
 
 sub import { $^H{'universal::func'} = 1 }
 sub unimport { $^H{'universal::func'} = 0 }
@@ -16,9 +17,9 @@ sub UNIVERSAL::func {
   }
 
   my $function_dispatcher = "$orig_class\::function_dispatcher";
-  (my $putative_file_name = $function_dispatcher) =~ s{::}{/}g; # assumes '/' is your OS's path separator
+  my $putative_file_name = File::Spec->join(split /::/, $function_dispatcher);
 
-  if (! $INC{$function_dispatcher}++) {
+  if (! $INC{"$putative_file_name.pm"}++) {
     local $@;
     eval <<EVAL;
 package $function_dispatcher;
