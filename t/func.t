@@ -6,7 +6,7 @@ use warnings;
 use FindBin ();
 use lib "$FindBin::Bin/../lib";
 
-use Test::More tests => 4;
+use Test::More tests => 11;
 
 {
   package MixedInterface;
@@ -59,4 +59,35 @@ use Test::More tests => 4;
 
   # strip out some elements of the call frames that we know will differ: line number, 'is require'
   is( scalar @got, scalar @exp, 'no extra call frames in strack trace' );
+}
+
+# UNIVERSAL::func acts pragmatically: you've got to opt in to its behavior
+{
+  my $yes = eval {
+    use universal::func;
+    MixedInterface->func->helper_function(2, 3, 5);
+  };
+  is( $@, '', 'no exception' );
+  is( $yes, 25, 'we can use universal::func wherever seems fit' );
+
+  # use 'eval STRING' rather than 'eval BLOCK' - though both let us play with line numbering
+  # to have a deterministic error message, the latter treats line numbers as persisting forward
+  # from our fixed fake number; the former resets them.
+  my $not_set_up = eval<<'EVAL';
+#line 19490201
+    MixedInterface->func->helper_function(3, 4, 6);
+EVAL
+  like( $@, qr/Can't locate object method "func" via package "MixedInterface" at .* line 19490201/, 'got expected error' );
+  is( undef, $not_set_up, 'sanity check: code really did die' );
+
+  my $turned_off = eval<<'EVAL';
+    use universal::func;
+    my $five = MixedInterface->func->helper_function(2, 3, 1);
+    is( $five, 5, 'first call lived' );
+    no universal::func;
+#line 19490201
+    MixedInterface->func->helper_function($five, $five, $five);
+EVAL
+  like( $@, qr/Can't locate object method "func" via package "MixedInterface" at .* line 19490201/, 'got expected error' );
+  is( undef, $turned_off, 'this exception is virtually indistinguishable from the previous one' );
 }
