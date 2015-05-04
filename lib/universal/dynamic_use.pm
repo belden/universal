@@ -15,33 +15,36 @@ sub UNIVERSAL::dynamic_use {
 
   my $dynamic_user = "$orig_class\::dynamic_user";
   (my $nominal_file_name = $dynamic_user) =~ s{::}{/}g;
-  if (! $INC{"$nominal_file_name.pm"}++) {
-    local $@;
-    eval <<EVAL;
 
-      package $dynamic_user;
-      use strict;
-      use warnings;
+  my $use_it_up_format = "package $orig_class; use %s" . (@imports
+    ? sprintf(' qw(%s)', join(' ', @imports))
+    : ''
+  );
 
-      sub AUTOLOAD {
-        my \$class = shift;
-        my (\$method) = our \$AUTOLOAD =~ m{^.*:(.+)};
-        my \$module = '$orig_class'->\$method;
+  my $to_eval = <<EVAL;
 
-        local \$@;
-        eval <<INNER_EVAL;
-          package $orig_class;
-          use \$module;
-INNER_EVAL
-        die \$@ if \$@;
-        return \$module;
-      }
+    package $dynamic_user;
+    no strict;
+    no warnings;
 
-      1;
+    sub AUTOLOAD {
+      my \$class = shift;
+      my (\$method) = our \$AUTOLOAD =~ m{^.*:(.+)};
+      my \$module = $orig_class->\$method;
+
+      local \$@;
+      eval sprintf('$use_it_up_format', \$module);
+      die \$@ if \$@;
+      return \$module;
+    }
+
+    1;
 
 EVAL
-    die $@ if $@;
-  }
+
+  local $@;
+  eval $to_eval;
+  die $@ if $@;
 
   return $dynamic_user;
 }
