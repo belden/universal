@@ -6,7 +6,7 @@ use warnings;
 use FindBin ();
 use lib "$FindBin::Bin/../lib";
 
-use Test::More tests => 11;
+use Test::More tests => 22;
 
 {
   package MixedInterface;
@@ -90,4 +90,44 @@ EVAL
 EVAL
   like( $@, qr/Can't locate object method "func" via package "MixedInterface" at .* line 19490201/, 'got expected error' );
   is( undef, $turned_off, 'this exception is virtually indistinguishable from the previous one' );
+}
+
+# universal::func can make itself invisible
+{
+  {
+    package functional;
+
+    sub foo {
+      my ($x, $y, $z) = @_;
+      return ($x + $y) * $z
+    }
+    sub bar {
+      my ($x, $y, $z) = @_;
+      my ($hints) = (caller(0))[10];
+      return ($x + $y) / $z
+    }
+  }
+
+  {
+    use universal::func qw(functional::foo functional::bar);
+    is( functional->foo(2, 3, 4), 20, 'invisible ->foo method call' );
+    is( functional::foo(2, 3, 4), 20, 'normal foo function call' );
+    is( functional->bar(17, 18, 5), 7, 'invisible ->bar method call' );
+    is( functional::bar(17, 18, 5), 7, 'normal bar function call' );
+
+    no universal::func qw(functional::bar);
+    is( functional->foo(2, 3, 4), 20, 'sanity: invisible ->foo method call still works' );
+    is( functional::foo(2, 3, 4), 20, 'sanity: normal foo function call still works' );
+
+    my @warnings;
+    local $SIG{__WARN__} = sub { push @warnings, \@_ };
+    local $@;
+    my $got = eval { functional->bar(17, 18, 5) };
+    is( $@, '', 'no exception' );
+    like( $got, qr/0\.94/, "('functional' + 17) / 18 == 17 / 18 == .94" );
+    is( scalar @warnings, 1, '1 warning' );
+    like( $warnings[0][0], qr/Argument "functional" isn't numeric in addition/, 'Known warning' );
+
+    is( functional::bar(17, 18, 5), 7, 'sanity: normal bar function call still works' );
+  }
 }
