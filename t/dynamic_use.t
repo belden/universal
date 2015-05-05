@@ -3,7 +3,7 @@
 use strict;
 use warnings;
 
-use Test::More tests => 17;
+use Test::More tests => 23;
 
 use FindBin ();
 use lib "$FindBin::Bin/../lib";
@@ -77,35 +77,60 @@ EVAL
       $class->dynamic_use(@args)->simple_exporter_class;
     }
 
-    sub try_calling {
-      my ($class, $method_or_function) = @_;
-      return $class->$method_or_function;
+    sub run_default_with_block_prototype {
+      return default_with_block_prototype(sub { $_ + 100 }, (1..5));
+    }
+
+    sub run_optional_with_block_prototype {
+      return optional_with_block_prototype(sub { $_ + 200 }, (1..5));
     }
   }
 
-  my $try = sub {
-    my ($target) = @_;
+  sub run_safely(&) {
+    my $block = shift;
     local $@;
-    my $out = eval { mumble->try_calling($target) };
+    my $out = eval { $block->() };
     return ($out, $@);
-  };
+  }
 
-  my ($got, $error);
+  # unprototyped functions
+  {
+    my ($got, $error);
 
-  ($got, $error) = $try->('default_export');
-  is( $got, undef, 'no unexpected values' );
-  like( $error, qr/Can't locate object method "default_export" via package "mumble"/ );
+    # nothing has been loaded yet
+    ($got, $error) = run_safely { mumble->default_export };
+    is( $got, undef, 'no unexpected values' );
+    like( $error, qr/Can't locate object method "default_export" via package "mumble"/ );
 
-  mumble->load_em_up;
-  ($got, $error) = $try->('default_export');
-  is( $got, 'default_export output', 'ran default_export' );
-  is( $error, '', 'no exceptions' );
-  ($got, $error) = $try->('optional_export');
-  is( $got, undef, 'no output for optional_export yet' );
-  like( $error, qr/Can't locate object method "optional_export" via package "mumble"/, 'and an error' );
+    mumble->load_em_up;
+    ($got, $error) = run_safely { mumble->default_export };
+    is( $got, 'default_export output', 'ran default_export' );
+    is( $error, '', 'no exceptions' );
+    ($got, $error) = run_safely { mumble->optional_export };
+    is( $got, undef, 'no output for optional_export yet' );
+    like( $error, qr/Can't locate object method "optional_export" via package "mumble"/, 'and an error' );
 
-  mumble->load_em_up('optional_export');
-  ($got, $error) = $try->('optional_export');
-  is( $got, 'optional_export output', 'got optional_export output' );
-  is( $error, '', 'no exceptions for optional_export' );
+    mumble->load_em_up('optional_export');
+    ($got, $error) = run_safely { mumble->optional_export };
+    is( $got, 'optional_export output', 'got optional_export output' );
+    is( $error, '', 'no exceptions for optional_export' );
+  }
+
+  # prototyped functions
+  {
+    my ($got, $error);
+
+    ($got, $error) = run_safely { [mumble->run_default_with_block_prototype] };
+    is_deeply( $got, [101 .. 105], 'default imported function with prototype behaves correctly' );
+    is( $error, '', 'no errors' );
+
+    ($got, $error) = run_safely { [mumble->run_optional_with_block_prototype] };
+    is_deeply( $got, undef, "can't run unimported functions" );
+    like( $error, qr/Undefined subroutine &mumble::optional_with_block_prototype/, 'got a predictable error' );
+
+    mumble->load_em_up('optional_with_block_prototype');
+    ($got, $error) = run_safely { [mumble->run_optional_with_block_prototype] };
+    is_deeply( $got, [201 .. 205], 'optional imported function with prototype behaves correctly' );
+    is( $error, '', 'no errors' );
+  }
 }
