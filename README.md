@@ -1,12 +1,12 @@
 ### NAME
 
-universal - things that I think would be perfectly find to stick into Perl's UNIVERSAL
+universal - things that I think would be perfectly fine to stick into Perl's UNIVERSAL
 
 ### SYNOPSIS
 
 #### universal::dynamic_use - runtime loading of classes and functions
 
-These two classes have a circular use: using `Ouroborus::Head` uses `Ourooborus::Tail`, which in
+These two classes have a circular use: using `Ouroborus::Head` uses `Ouroborus::Tail`, which in
 turn uses `Ouroborus::Head`. This means `Head` cannot be compiled without first compiling `Head`.
 
 ```perl
