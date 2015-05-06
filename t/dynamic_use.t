@@ -3,7 +3,7 @@
 use strict;
 use warnings;
 
-use Test::More tests => 23;
+use Test::More tests => 24;
 
 use FindBin ();
 use lib "$FindBin::Bin/../lib";
@@ -133,4 +133,26 @@ EVAL
     is_deeply( $got, [201 .. 205], 'optional imported function with prototype behaves correctly' );
     is( $error, '', 'no errors' );
   }
+}
+
+# the crazy interface which allows you to use your beautifully prototyped functions
+{
+  {
+    package astronomic::insanity;
+
+    sub helper_class { 'SimpleExporter' }
+
+    sub uc_list {
+      my $class = shift;
+
+      BEGIN { $ENV{I_AM_BANANA_PANTS_INSANE} = 'and there is no backing out now' };
+      use universal::dynamic_use qw(SimpleExporter::optional_with_block_prototype);
+      $class->dynamic_use('optional_with_block_prototype')->helper_class;
+      return optional_with_block_prototype { uc($_) } @_;
+    }
+  }
+
+  my $got = [astronomic::insanity->uc_list(qw(a e i o u))];
+  my $exp = [qw(A E I O U)];
+  is_deeply( $got, $exp, 'we were able to load a "&@" prototyped function and use it as `func BLOCK LIST`' );
 }
