@@ -80,6 +80,9 @@ universal::overridable - make CORE functions universally overridable across all 
     use strict;
     use warnings;
 
+    use FindBin qw($Bin);
+    use lib "$Bin/../lib";
+
     my $now = time;
 
     my $then = do {
@@ -91,22 +94,56 @@ universal::overridable - make CORE functions universally overridable across all 
 
     my $later = time;
 
-    my $subsequently = do {
-      use universal::overridable +{
-        'CORE::time' => sub { 9770 },
-      };
-
-      time;
-    };
-
-    my $again = time;
-
     print <<PRINT
-    now: $now
-    then: $then
+    now:   $now (${\scalar localtime($now)})
+    then:    $then (${\scalar localtime($then)})
     later: $later (pretty close to $now)
-    subsequently: $subsequently (a long time ago)
-    again: $again
     PRINT
 
     __END__
+    now:   1431025089 (Thu May  7 18:58:09 2015)
+    then:    19490201 (Fri Aug 14 13:56:41 1970)
+    later: 1431025089 (pretty close to 1431025089)
+
+=head1 DESCRIPTION
+
+This is my attempt to make a single pattern for making targetable code that can be monkeypatched ad nauseum.
+Monkeypatching is used to varying extents within most large applications' test suites; and it is used on
+occasion in one-off scripts and actual long-running application code.
+
+There are two types of functions that the Perl developer may wish to monkeypatch:
+
+1. Regular functions implemented in perl by other module developers;
+2. CORE functions provided by the perl language itself.
+
+Various techniques already exist for solving the first problem. The second problem, however, has a few
+not-so-obvious pitfalls which this module attempts to alleviate.
+
+=head1 REGULAR CORE:: MONKEYPATCHING
+
+Here is a script that siezes control of the clock, as seen by perl:
+
+     1	#!/usr/bin/env perl
+     2	use strict;
+     3	use warnings;
+     4
+     5	use Test::More tests => 2;
+     6
+     7	use My::Application::Model::SomeModel;
+     8
+     9	BEGIN {
+    10	  *CORE::GLOBAL::time = sub { 12345 };
+    11	}
+    12
+    13	cmp_ok( time(), '==', 12345, 'fake time in effect' );
+    14
+    15	no warnings 'redefine';
+    16	*CORE::GLOBAL::time = sub { 678910 };
+    17	cmp_ok( time(), '==', 678910, 'revised fake time in effect' );
+    18	__END__
+
+On perl 5.10.1, the above script yields this output:
+
+    ok 1 - fake time in effect
+    ok 2 - revised fake time in effect
+
