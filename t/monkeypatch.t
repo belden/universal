@@ -46,7 +46,7 @@ EVAL
 
     like(
       $error,
-      qr/CORE::map has no prototype so is not overridable, please rethink your approach at $me line \d+/,
+      qr/CORE::map has no prototype so is not overridable, please rethink your approach at .*$FindBin::Script line \d+/,
       'We correctly inform the programmer about non-overridable functions'
      );
   }
@@ -66,7 +66,7 @@ EVAL
     is( sixth->bating, $return, 'we get the proper return value' );
 
     {
-      no warnings 'redefine';
+      no warnings 'redefine', 'once';
       my $revised_return = 4548;
       local *sixth::MONKEYPATCH::bating = sub { $revised_return };
       is( sixth->bating, $revised_return, 'we can swap out the function' );
