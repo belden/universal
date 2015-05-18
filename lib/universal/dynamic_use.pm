@@ -59,30 +59,68 @@ EVAL
   return $dynamic_user;
 }
 
+sub unzip(&@) {
+  my $code = shift;
+  my ($l, $r) = ([], []);
+  foreach (@_) {
+    push @{$code->() ? $l : $r}, $_;
+  }
+  return ($l, $r);
+}
+
 sub set_up_prototypes_for_caller {
   my ($class, $callpack, $args) = @_;
 
-  my @tidy = map { my $c = $_; $c =~ s{^.*:}{}; $c } @$args;
+  my ($known, $unknown) =
+    unzip { m{\w+::[\w:]+\([^)]+\)} }
+    @$args;
+
+  push @$known, $class->guess_prototypes($callpack, $unknown) if @$unknown;
+
+  my @to_eval;
+  foreach my $forward_declaration (@$known) {
+    my ($sub, $proto) = $forward_declaration =~ m{^.*: (\w+) \( ([^\)]+) \)$}x;
+    push @to_eval, "sub $sub ($proto);";
+  }
+
+  my $to_eval = sprintf <<EVAL, $callpack, join("\n", @to_eval);
+package %s;
+%s;
+EVAL
+  local $@;
+  eval $to_eval;
+  die $@ if $@;
+}
+
+sub guess_prototypes {
+  my ($class, $callpack, $args) = @_;
+
   die "Cowardly refusing to continue until you set I_AM_BANANA_PANTS_INSANE to some value\n"
     if ! exists $ENV{I_AM_BANANA_PANTS_INSANE};
 
   my $example_prototype = $class->prototype_for_function($args->[0]);
   my ($provider) = $args->[0] =~ m{^(.*)::\w+};
 
+  my $tidy = map { "    $_" } join "\n", @$args;
+
   die <<INSANE if $ENV{I_AM_BANANA_PANTS_INSANE} ne 'and there is no backing out now';
 I see you're insane! welcome, we need more programmers like you. But before you activate this
-section of code: have you considered a simple forward declaration of '@tidy'
-within $callpack to have the prototypes that you know you need?
+section of code: I bet you already know the prototypes of the functions you want to import:
 
-For example, since $args->[0] has the prototype $example_prototype, you can simply write
+$tidy
 
-  package $callpack;
+You can specify the prototypes in your 'use' line; for example, if you were trying to say:
 
-  sub $tidy[0] ($example_prototype);  # forward declaration of BLOCK-prototyped function
+    use dynamic_use qw{Hash::MostUtils::hashmap};
 
-and later you can go ahead and `universal::dynamic_use` that function into $callpack.
+then you could instead say
 
-On the other hand, if you really want to proceed, then you need to set
+    use universal::dynamic_use qw{Hash::MostUtils::hashmap(&@)};
+
+to indicate that Hash::MostUtils::hashmap has a $@ prototype to it.
+
+On the other hand, if you really want to proceed with letting me figure out your functions'
+prototypes, then you need to set
 
   I_AM_BANANA_PANTS_INSANE='and there is no backing out now'
 
@@ -94,18 +132,13 @@ INSANE
 
   # okay, you asked for it
   my @prototypes = map { $class->prototype_for_function($_) } @$args;
-  my @to_eval;
-  foreach my $sub (@tidy) {
-    my $proto = shift(@prototypes);
-    push @to_eval, "sub $sub ($proto);";
+  my @out;
+  foreach my $sub (@$args) {
+    my $proto = shift @prototypes;
+    push @out, "$sub($proto)";
   }
-  my $to_eval = sprintf <<EVAL, $callpack, join("\n", @to_eval);
-package %s;
-%s;
-EVAL
-  local $@;
-  eval $to_eval;
-  die $@ if $@;
+
+  return @out;
 }
 
 sub prototype_for_function {
@@ -122,13 +155,13 @@ sub prototype_for_function {
     @INC;
 
   if ($found && open(my $fh, '<', $found)) {
-    while (<$fh>) {
-      if (/^ \s* sub \s+ (?:$module\::)? $function_name \s* \( ([^)]+) \)/x) {
+    while (my $line = <$fh>) {
+      if ($line =~ /^ \s* sub \s+ (?:$module\::)? $function_name \s* \( ([^)]+) \)/x) {
         # This is how normal people write prototyped functions:
         # sub foo (&@) { ... }  -> '&@'
         $prototype = $1;
         last;
-      } elsif (/^ \s* \* (?:$module\::)? $function_name \s* = \s* sub \s* \(([^)]+)\)/x) {
+      } elsif ($line =~ /^ \s* \* (?:$module\::)? $function_name \s* = \s* sub \s* \(([^)]+)\)/x) {
         # I did typeglob assignment of a prototyped subref in Hash::MostUtils:
         # *foo = sub (&@) { ... } -> '&@'
         $prototype = $1;
@@ -146,4 +179,107 @@ sub prototype_for_function {
 1;
 
 __END__
+
+=head1 NAME
+
+universal::dynamic_use - compile-time predeclaration of runtime-imported subroutines
+
+=head1 SYNOPSIS
+
+    package Your::Module;
+
+    sub dump_something {
+      my ($class, $thing) = @_;
+
+      use universal::dynamic_use;
+      return $class->dynamic_use->dumper_class->Dump($thing);
+    }
+
+    sub dumper_class { 'Data::Dumper' }
+
+=head1 DESCRIPTION
+
+C<universal::dynamic_use> provides a pattern for runtime-loading of modules into your application. Modules which
+provide an object-oriented interface or a class interface may be easily changed to load at runtime; rather than
+writing something like this:
+
+    package Your::Application::Model::Foo;
+
+    use Your::Application::Model::Bar;  # which might, in turn, 'use Your::Application::Model::Foo' - a circle, yikes
+
+    sub do_stuff {
+        my ($class, @args) = @_;
+
+        my $bar = Your::Application::Model::Bar->new(...);
+
+        $bar->...
+
+    }
+
+You can instead write this:
+
+    package Your::Application::Model::Foo;
+
+    sub bar_class { 'Your::Application::Model::Bar' }
+
+    sub do_stuff {
+        my ($class, @args) = @_;
+
+        use universal::dynamic_use;
+        my $bar = $class->dynamic_use->bar_class->new(...);
+
+        $bar->...
+
+    }
+
+C<universal::dynamic_use> can also be used to import functions from other classes at runtime. In particular, this
+module handles runtime loading of functions with BLOCK prototypes on them.
+
+This contrived code does not perform as you would expect:
+
+    sub contains_even_numbers {
+        eval "use List::MoreUtils qw(any)";
+        return any { $_ % 2 == 0 } @_;
+    }
+
+At compile-time, perl does not know that `any` has the C<&@> prototype, so sets up an optree to reflect that
+`any` will receive a hash reference as a first argument. Unfortunately, using the techniques specified in
+L<perlref> to disambiguate that we intend a code block, and not a hash reference, do not work here:
+
+    sub contains_even_numbers {
+        eval "use List::MoreUtils qw(any)";
+        return any {; $_ % 2 == 0 } @_;
+    }
+
+One way to solve this problem is to predeclare `any` to have the proper prototype:
+
+    sub any (&@);
+
+    sub contains_even_numbers {
+        eval "use List::MoreUtils qw(any)";
+        return any { $_ % 2 == 0 } @_;
+    }
+
+Another way is to use C<universal::dynamic_use> to predeclare your signatures:
+
+    sub contains_even_numbers {
+        use universal::dynamic_use qw{List::MoreUtils::any(&@)};
+        return any { $_ % 2 == 0 } @_;
+    }
+
+If you don't want to provide a hint C<universal::dynamic_use> as to what signature you expect, you can
+ask C<universal::dymamic_use> to figure the prototype out for you:
+
+    sub contains_even_numbers {
+        BEGIN { $ENV{I_AM_BANANA_PANTS_INSANE} = 1 }
+        use universal::dynamic_use qw(List::MoreUtils::any);
+
+        return any { $_ % 2 == 0 } @_;
+    }
+
+You absolutely must be banana-pants insane to ever want to use this section of code.
+
+=head1 AUTHOR
+
+Belden Lyman <belden@cpan.org>
 
