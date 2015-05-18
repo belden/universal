@@ -3,7 +3,7 @@
 use strict;
 use warnings;
 
-use Test::More tests => 24;
+use Test::More tests => 25;
 
 use FindBin ();
 use lib "$FindBin::Bin/../lib";
@@ -155,4 +155,23 @@ EVAL
   my $got = [astronomic::insanity->uc_list(qw(a e i o u))];
   my $exp = [qw(A E I O U)];
   is_deeply( $got, $exp, 'we were able to load a "&@" prototyped function and use it as `func BLOCK LIST`' );
+}
+
+# a less crazy interface which also allows you to use your beautifully prototyped functions
+{
+  {
+    package declare::upfront;
+
+    sub other_class { 'OtherExporter' }
+
+    sub uc_list {
+      my $class = shift;
+
+      use universal::dynamic_use qw(OtherExporter::optional_with_block_prototype(&@));
+    }
+  }
+
+  my $got = [astronomic::insanity->uc_list(qw(a e i o u))];
+  my $exp = [qw(A E I O U)];
+  is_deeply( $got, $exp, 'we were able to simply forward-declare a "&@" prototyped function and use it as `func BLOCK LIST`' );
 }
