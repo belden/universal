@@ -3,7 +3,7 @@
 use strict;
 use warnings;
 
-use Test::More tests => 23;
+use Test::More tests => 24;
 
 use FindBin ();
 use lib "$FindBin::Bin/../lib";
@@ -28,6 +28,23 @@ use lib "$FindBin::Bin/lib";
   };
   is( $@, '', 'no exceptions' );
   like( $dump, qr/\$VAR1 .* = .* 'hello'/x, 'We got a data::dumper output' );
+}
+
+# don't dispatch back to UNIVERSAL, that's lame
+{
+  {
+    package NotAClass;
+
+    sub util_class { 'CGI' }
+    sub get_a_user_agent {
+      my (@args) = @_;
+      use universal::dynamic_use;
+      return UNIVERSAL->dynamic_use->util_class->new(@args);
+    }
+  }
+
+  my $lwp = NotAClass->get_a_user_agent;
+  is( ref($lwp), NotAClass->util_class, 'we can UNIVERSAL->dynamic_use correctly' );
 }
 
 # pragmatic behavior

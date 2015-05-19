@@ -10,8 +10,9 @@ sub unimport { $^H{dynamic_use} = 0 }
 sub UNIVERSAL::dynamic_use {
   my ($orig_class, @imports) = @_;
 
-  my ($hints) = (caller(0))[10];
+  my ($callpack, $hints) = (caller(0))[0,10];
   Carp::croak(qq{Can't locate object method "dynamic_use" via package "$orig_class"}) unless $hints->{dynamic_use};
+  $orig_class = $callpack if $orig_class eq 'UNIVERSAL';
 
   my $dynamic_user = "$orig_class\::dynamic_user";
   (my $nominal_file_name = $dynamic_user) =~ s{::}{/}g;

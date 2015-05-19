@@ -332,4 +332,9 @@ A more explicit and less invasive form of this module can be used:
 
 =head1 AUTHOR
 
-Belden Lyman (belden@cpan.org)
+(c) 2015 Belden Lyman (belden@cpan.org)
+
+=head1 LICENSE
+
+As Perl.
+
