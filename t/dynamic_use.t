@@ -3,7 +3,7 @@
 use strict;
 use warnings;
 
-use Test::More tests => 24;
+use Test::More tests => 25;
 
 use FindBin ();
 use lib "$FindBin::Bin/../lib";
@@ -30,21 +30,30 @@ use lib "$FindBin::Bin/lib";
   like( $dump, qr/\$VAR1 .* = .* 'hello'/x, 'We got a data::dumper output' );
 }
 
-# don't dispatch back to UNIVERSAL, that's lame
+# UNIVERSAL->dynamic_use
+# UNIVERSAL::dynamic_use
 {
   {
     package NotAClass;
+    use universal::dynamic_use;
 
     sub util_class { 'CGI' }
-    sub get_a_user_agent {
+
+    sub get_an_object {
       my (@args) = @_;
-      use universal::dynamic_use;
       return UNIVERSAL->dynamic_use->util_class->new(@args);
+    }
+
+    sub uri_class { 'URI' }
+    sub get_another_object {
+      UNIVERSAL::dynamic_use->uri_class->new;
     }
   }
 
-  my $lwp = NotAClass->get_a_user_agent;
-  is( ref($lwp), NotAClass->util_class, 'we can UNIVERSAL->dynamic_use correctly' );
+  # we can string-equal one but not the other because URI->new is a factory whereas
+  # CGI->new is a constructor
+  is( ref(NotAClass->get_an_object), 'CGI', 'we can UNIVERSAL->dynamic_use correctly' );
+  like( ref(NotAClass->get_another_object), qr/URI/, 'we can UNIVERSAL::dynamic_use, too' );
 }
 
 # pragmatic behavior
@@ -117,7 +126,7 @@ EVAL
     # nothing has been loaded yet
     ($got, $error) = run_safely { mumble->default_export };
     is( $got, undef, 'no unexpected values' );
-    like( $error, qr/Can't locate object method "default_export" via package "mumble"/ );
+    like( $error, qr/Can't locate object method "default_export" via package "mumble"/, 'got an error message of some sort, yo' );
 
     mumble->load_em_up;
     ($got, $error) = run_safely { mumble->default_export };
